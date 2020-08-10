@@ -35,13 +35,13 @@ func TestCLI(t *testing.T) {
 	}{
 		{
 			description: "works",
-			command:     []string{"--state-backend", "file", "--secret-store-backend", "inprocess", "--debug"},
+			command:     []string{"--state-backend", "file", "--debug"},
 			expected: strings.TrimSpace(`
 {"level":"info","msg":"starting sidecred","namespace":"example","requests":1}
-{"level":"info","msg":"processing request","namespace":"example","type":"random","name":"example-random-credential"}
-{"level":"info","msg":"created new credentials","namespace":"example","type":"random","count":1}
-{"level":"debug","msg":"stored credential","namespace":"example","type":"random","path":"example.example-random-credential"}
-{"level":"info","msg":"done processing","namespace":"example","type":"random"}
+{"level":"info","msg":"processing request","namespace":"example","store":"inprocess","type":"random","name":"example-random-credential"}
+{"level":"info","msg":"created new credentials","namespace":"example","store":"inprocess","type":"random","count":1}
+{"level":"debug","msg":"stored credential","namespace":"example","store":"inprocess","type":"random","path":"example.example-random-credential"}
+{"level":"info","msg":"done processing","namespace":"example","store":"inprocess","type":"random"}
 			 `),
 		},
 	}
@@ -58,11 +58,21 @@ func TestCLI(t *testing.T) {
 			}
 
 			runFunc := func(s *sidecred.Sidecred, _ sidecred.StateBackend) error {
-				return s.Process("example", []*sidecred.Request{{
-					Type:   sidecred.Randomized,
-					Name:   "example-random-credential",
-					Config: []byte(`{"length":10}`),
-				}}, &sidecred.State{})
+				return s.Process("example", &sidecred.Config{
+					Version:   1,
+					Namespace: "example",
+					Stores: []*sidecred.StoreConfig{{
+						Type: sidecred.Inprocess,
+					}},
+					Requests: []*sidecred.CredentialRequest{{
+						Store: "inprocess",
+						Credentials: []*sidecred.Request{{
+							Type:   sidecred.Randomized,
+							Name:   "example-random-credential",
+							Config: []byte(`{"length":10}`),
+						}},
+					}},
+				}, &sidecred.State{})
 			}
 
 			app := kingpin.New("test", "").Terminate(nil)

@@ -53,7 +53,7 @@ func TestWrite(t *testing.T) {
 			client.PutParameterReturns(nil, tc.putError)
 
 			store := secretstore.New(client, secretstore.WithPathTemplate(tc.pathTemplate))
-			path, err := store.Write(teamName, secret)
+			path, err := store.Write(teamName, secret, nil)
 
 			assert.Equal(t, tc.expectedError, err)
 			assert.Equal(t, tc.secretPath, path)
@@ -109,7 +109,7 @@ func TestRead(t *testing.T) {
 			client.GetParameterReturns(tc.getParameterOutput, tc.getParameterError)
 
 			store := secretstore.New(client)
-			secret, found, err := store.Read(tc.secretPath)
+			secret, found, err := store.Read(tc.secretPath, nil)
 
 			assert.Equal(t, tc.expectedError, err)
 			assert.Equal(t, tc.expectFound, found)
@@ -154,7 +154,7 @@ func TestDelete(t *testing.T) {
 			client.DeleteParameterReturns(nil, tc.deleteParameterError)
 
 			store := secretstore.New(client)
-			err := store.Delete(tc.secretPath)
+			err := store.Delete(tc.secretPath, nil)
 
 			assert.Equal(t, tc.expectedError, err)
 			assert.Equal(t, 1, client.DeleteParameterCallCount())

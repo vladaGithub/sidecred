@@ -2,6 +2,8 @@
 package inprocess
 
 import (
+	"encoding/json"
+
 	"github.com/telia-oss/sidecred"
 )
 
@@ -37,7 +39,7 @@ func (s *store) Type() sidecred.StoreType {
 }
 
 // Write implements secretstore.SecretStore.
-func (s *store) Write(namespace string, secret *sidecred.Credential) (string, error) {
+func (s *store) Write(namespace string, secret *sidecred.Credential, _ json.RawMessage) (string, error) {
 	path, err := sidecred.BuildSecretPath(s.pathTemplate, namespace, secret.Name)
 	if err != nil {
 		return "", err
@@ -48,7 +50,7 @@ func (s *store) Write(namespace string, secret *sidecred.Credential) (string, er
 }
 
 // Read implements secretstore.SecretStore.
-func (s *store) Read(path string) (string, bool, error) {
+func (s *store) Read(path string, _ json.RawMessage) (string, bool, error) {
 	v, ok := s.secrets[path]
 	if !ok {
 		return "", false, nil
@@ -57,7 +59,7 @@ func (s *store) Read(path string) (string, bool, error) {
 }
 
 // Delete implements secretstore.SecretStore.
-func (s *store) Delete(path string) error {
+func (s *store) Delete(path string, _ json.RawMessage) error {
 	delete(s.secrets, path)
 	return nil
 }

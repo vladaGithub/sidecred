@@ -14,6 +14,7 @@ import (
 
 var (
 	installationToken = &github.InstallationToken{Token: github.String("access-token")}
+	config            = []byte(`{"repository":"repository","owner":"owner"}`)
 )
 
 func TestWrite(t *testing.T) {
@@ -49,14 +50,12 @@ func TestWrite(t *testing.T) {
 			fakeActionsAPI.CreateOrUpdateSecretReturns(nil, nil)
 
 			store := secretstore.New(fakeApp,
-				"repository",
-				"owner",
 				secretstore.WithSecretTemplate(tc.pathTemplate),
 				secretstore.WithActionsClientFactory(func(string) secretstore.ActionsAPI {
 					return fakeActionsAPI
 				}),
 			)
-			path, err := store.Write(teamName, secret)
+			path, err := store.Write(teamName, secret, config)
 
 			assert.Equal(t, tc.expectedError, err)
 			assert.Equal(t, tc.expectedPath, path)
@@ -95,13 +94,11 @@ func TestRead(t *testing.T) {
 			fakeActionsAPI.GetSecretReturns(&github.Secret{Name: secretValue}, nil, nil)
 
 			store := secretstore.New(fakeApp,
-				"repository",
-				"owner",
 				secretstore.WithActionsClientFactory(func(string) secretstore.ActionsAPI {
 					return fakeActionsAPI
 				}),
 			)
-			secret, found, err := store.Read(tc.secretPath)
+			secret, found, err := store.Read(tc.secretPath, config)
 
 			assert.Equal(t, tc.expectedError, err)
 			assert.Equal(t, tc.expectFound, found)
@@ -136,13 +133,11 @@ func TestDelete(t *testing.T) {
 			fakeActionsAPI.DeleteSecretReturns(nil, nil)
 
 			store := secretstore.New(fakeApp,
-				"owner",
-				"repository",
 				secretstore.WithActionsClientFactory(func(string) secretstore.ActionsAPI {
 					return fakeActionsAPI
 				}),
 			)
-			err := store.Delete(tc.secretPath)
+			err := store.Delete(tc.secretPath, config)
 
 			assert.Equal(t, tc.expectedError, err)
 			assert.Equal(t, 1, fakeActionsAPI.DeleteSecretCallCount())

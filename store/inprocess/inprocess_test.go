@@ -38,16 +38,16 @@ func TestInProcessStore(t *testing.T) {
 		t.Run(tc.description, func(t *testing.T) {
 			store := secretstore.New(secretstore.WithPathTemplate(tc.pathTemplate))
 
-			path, err := store.Write(teamName, secret)
+			path, err := store.Write(teamName, secret, nil)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.secretPath, path)
 
-			actual, found, err := store.Read(path)
+			actual, found, err := store.Read(path, nil)
 			assert.Nil(t, err)
 			assert.Equal(t, true, found)
 			assert.Equal(t, secret.Value, actual)
 
-			err = store.Delete(path)
+			err = store.Delete(path, nil)
 			assert.Nil(t, err)
 		})
 	}

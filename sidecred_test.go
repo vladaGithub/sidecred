@@ -1,6 +1,7 @@
 package sidecred_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
+	"sigs.k8s.io/yaml"
 )
 
 var (
@@ -22,6 +24,7 @@ func TestProcess(t *testing.T) {
 	tests := []struct {
 		description          string
 		namespace            string
+		config               string
 		resources            []*sidecred.Resource
 		requests             []*sidecred.Request
 		expectedSecrets      map[string]string
@@ -32,10 +35,21 @@ func TestProcess(t *testing.T) {
 		{
 			description: "sidecred works",
 			namespace:   "team-name",
-			requests: []*sidecred.Request{{
-				Type: testCredentialType,
-				Name: testStateID,
-			}},
+			config: strings.TrimSpace(`
+---
+version: 1
+namespace: team-name 
+
+stores:
+  - type: inprocess
+
+requests:
+  - store: inprocess
+    credentials:
+      - type: fake
+        name: fake.state.id
+
+            `),
 			expectedSecrets: map[string]string{
 				"team-name.fake-credential": "fake-value",
 			},
@@ -49,13 +63,24 @@ func TestProcess(t *testing.T) {
 		{
 			description: "does not create credentials when they exist in state",
 			namespace:   "team-name",
+			config: strings.TrimSpace(`
+---
+version: 1
+namespace: team-name 
+
+stores:
+  - type: inprocess
+
+requests:
+  - store: inprocess
+    credentials:
+      - type: fake
+        name: fake.state.id
+
+            `),
 			resources: []*sidecred.Resource{{
 				ID:         testStateID,
 				Expiration: testTime,
-			}},
-			requests: []*sidecred.Request{{
-				Type: testCredentialType,
-				Name: testStateID,
 			}},
 			expectedSecrets: map[string]string{},
 			expectedResources: []*sidecred.Resource{{
@@ -68,13 +93,23 @@ func TestProcess(t *testing.T) {
 		{
 			description: "replaces expired resources (within the rotation window)",
 			namespace:   "team-name",
+			config: strings.TrimSpace(`
+---
+version: 1
+namespace: team-name 
+
+stores:
+  - type: inprocess
+
+requests:
+  - store: inprocess
+    credentials:
+      - type: fake
+        name: fake.state.id
+            `),
 			resources: []*sidecred.Resource{{
 				ID:         testStateID,
 				Expiration: time.Now().Add(3 * time.Minute),
-			}},
-			requests: []*sidecred.Request{{
-				Type: testCredentialType,
-				Name: testStateID,
 			}},
 			expectedResources: []*sidecred.Resource{{
 				ID:         testStateID,
@@ -87,13 +122,23 @@ func TestProcess(t *testing.T) {
 		{
 			description: "destroys deposed resources",
 			namespace:   "team-name",
+			config: strings.TrimSpace(`
+---
+version: 1
+namespace: team-name 
+
+stores:
+  - type: inprocess
+
+requests:
+  - store: inprocess
+    credentials:
+      - type: fake
+        name: fake.state.id
+            `),
 			resources: []*sidecred.Resource{{
 				ID:         testStateID,
 				Expiration: time.Now(),
-			}},
-			requests: []*sidecred.Request{{
-				Type: testCredentialType,
-				Name: testStateID,
 			}},
 			expectedResources: []*sidecred.Resource{{
 				ID:         testStateID,
@@ -106,6 +151,18 @@ func TestProcess(t *testing.T) {
 		{
 			description: "destroys resources that are no longer requested",
 			namespace:   "team-name",
+			config: strings.TrimSpace(`
+---
+version: 1
+namespace: team-name 
+
+stores:
+  - type: inprocess
+
+requests:
+  - store: inprocess
+    credentials: []
+            `),
 			resources: []*sidecred.Resource{{
 				ID:         "other.state.id",
 				Expiration: testTime,
@@ -115,39 +172,94 @@ func TestProcess(t *testing.T) {
 			expectedDestroyCalls: 1,
 		},
 		{
-			description:     "does nothing if there are no requests",
-			namespace:       "team-name",
+			description: "does nothing if there are no requests",
+			namespace:   "team-name",
+			config: strings.TrimSpace(`
+---
+version: 1
+namespace: team-name 
+
+stores:
+  - type: inprocess
+
+requests:
+  - store: inprocess
+    credentials: []
+            `),
 			expectedSecrets: map[string]string{},
 		},
 		{
 			description: "does nothing if there are no providers for the request",
 			namespace:   "team-name",
 			resources:   []*sidecred.Resource{},
-			requests: []*sidecred.Request{{
-				Type: sidecred.AWSSTS,
-				Name: testStateID,
-			}},
+			config: strings.TrimSpace(`
+---
+version: 1
+namespace: team-name 
+
+stores:
+  - type: inprocess
+
+requests:
+  - store: inprocess
+    credentials:
+      - type: aws:sts
+        name: fake.state.id
+            `),
 			expectedSecrets:   map[string]string{},
 			expectedResources: []*sidecred.Resource{},
+		},
+		{
+			description: "credentials can inherit type from the request",
+			namespace:   "team-name",
+			resources:   []*sidecred.Resource{},
+			config: strings.TrimSpace(`
+---
+version: 1
+namespace: team-name 
+
+stores:
+  - type: inprocess
+
+requests:
+  - store: inprocess
+    type: fake
+    credentials:
+      - name: fake.state.id
+            `),
+			expectedSecrets: map[string]string{
+				"team-name.fake-credential": "fake-value",
+			},
+			expectedResources: []*sidecred.Resource{{
+				ID:         testStateID,
+				Expiration: testTime,
+				InUse:      true,
+			}},
+			expectedCreateCalls: 1,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.description, func(t *testing.T) {
 			var (
+				config   = &sidecred.Config{}
 				store    = inprocess.New()
 				state    = sidecred.NewState()
 				provider = &fakeProvider{}
 				logger   = zaptest.NewLogger(t)
 			)
+
+			err := yaml.Unmarshal([]byte(tc.config), &config)
+			require.NoError(t, err)
+
 			for _, r := range tc.resources {
 				state.AddResource(provider.Type(), r)
 			}
 
-			s, err := sidecred.New([]sidecred.Provider{provider}, store, 10*time.Minute, logger)
+			s, err := sidecred.New([]sidecred.Provider{provider}, []sidecred.SecretStore{store}, 10*time.Minute, logger)
 			require.NoError(t, err)
 
-			err = s.Process(tc.namespace, tc.requests, state)
+			err = s.Process(tc.namespace, config, state)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expectedCreateCalls, provider.CreateCallCount(), "create calls")
 			assert.Equal(t, tc.expectedDestroyCalls, provider.DestroyCallCount(), "destroy calls")
@@ -157,7 +269,7 @@ func TestProcess(t *testing.T) {
 			}
 
 			for k, v := range tc.expectedSecrets {
-				value, found, err := store.Read(k)
+				value, found, err := store.Read(k, nil)
 				assert.NoError(t, err)
 				assert.True(t, found, "secret exists")
 				assert.Equal(t, v, value)
@@ -229,13 +341,13 @@ func TestProcessCleanup(t *testing.T) {
 			}
 
 			for _, s := range tc.secrets {
-				state.AddSecret(store.Type(), s)
+				state.AddSecret(&sidecred.StoreConfig{Type: store.Type()}, s)
 			}
 
-			s, err := sidecred.New([]sidecred.Provider{provider}, store, 10*time.Minute, logger)
+			s, err := sidecred.New([]sidecred.Provider{provider}, []sidecred.SecretStore{store}, 10*time.Minute, logger)
 			require.NoError(t, err)
 
-			err = s.Process(tc.namespace, []*sidecred.Request{}, state)
+			err = s.Process(tc.namespace, &sidecred.Config{Version: 1, Namespace: "team-name"}, state)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expectedDestroyCalls, provider.DestroyCallCount(), "destroy calls")
 
